@@ -6,7 +6,7 @@ Nardy Blitz is a modern backgammon training platform built for nFactorial Incuba
 
 | | |
 |---|---|
-| Live Demo | `[TODO: add Vercel link](https://nardy-blitz.vercel.app)` |
+| Live Demo | https://nardy-blitz.vercel.app |
 | GitHub | https://github.com/L4RBIX/nardy-blitz |
 | [Features](#features) | Game, Multiplayer, AI Coach, Stats, Leaderboard, Pro |
 | [How to Run](#how-to-run-locally) | Frontend + optional backend |
