@@ -794,12 +794,16 @@ function LeaderboardSubmitSection({
           favorite_difficulty: favDiff,
           badges,
         });
-        if (error) throw error;
+        if (error) {
+          console.error("[leaderboard submit] Supabase error:", error);
+          throw error;
+        }
       }
       setStatus("success");
     } catch (err) {
+      console.error("[leaderboard submit] caught:", err);
       setStatus("error");
-      setErrMsg(err instanceof Error ? err.message : "Submission failed.");
+      setErrMsg(err instanceof Error ? err.message : (err as { message?: string })?.message ?? "Submission failed.");
     }
   }
 

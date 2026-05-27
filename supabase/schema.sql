@@ -178,11 +178,31 @@ end $$;
 
 
 -- ══════════════════════════════════════════════════════════════
--- 5. leaderboard_entries — badges column (idempotent)
+-- 5. leaderboard_entries — additional columns (idempotent)
 -- ══════════════════════════════════════════════════════════════
 
 do $$ begin
   alter table leaderboard_entries add column badges text[] default '{}';
+exception when duplicate_column then null;
+end $$;
+
+do $$ begin
+  alter table leaderboard_entries add column multiplayer_wins integer default 0;
+exception when duplicate_column then null;
+end $$;
+
+do $$ begin
+  alter table leaderboard_entries add column multiplayer_losses integer default 0;
+exception when duplicate_column then null;
+end $$;
+
+do $$ begin
+  alter table leaderboard_entries add column multiplayer_games integer default 0;
+exception when duplicate_column then null;
+end $$;
+
+do $$ begin
+  alter table leaderboard_entries add column longest_streak integer default 0;
 exception when duplicate_column then null;
 end $$;
 
@@ -234,6 +254,15 @@ do $$ begin
   alter publication supabase_realtime add table multiplayer_rooms;
 exception when duplicate_object then null;
 end $$;
+
+
+-- ══════════════════════════════════════════════════════════════
+-- 8. Reload PostgREST schema cache
+-- ══════════════════════════════════════════════════════════════
+-- Forces PostgREST to pick up all newly added columns immediately.
+-- Safe to re-run — NOTIFY is always a no-op if nothing changed.
+
+notify pgrst, 'reload schema';
 
 
 -- ══════════════════════════════════════════════════════════════
