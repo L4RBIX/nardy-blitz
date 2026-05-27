@@ -356,7 +356,7 @@ If the backend is offline or not deployed, the frontend automatically uses the l
 
 ## Supabase Setup
 
-Supabase is required for real cross-device multiplayer and the live leaderboard. Without it, both features fall back to demo/local modes.
+The script creates the required Supabase tables, including multiplayer_rooms, leaderboard_entries, pro_waitlist, and match_history.
 
 ### Step 1 — Create a project
 
@@ -453,14 +453,11 @@ If the FastAPI AI Coach backend is not deployed or is temporarily unavailable, t
 
 ## Known Limitations
 
-- **No authentication.** Any client that knows a room ID can read and write its game state. This is intentional for the prototype but not production-safe.
-- **Prototype RLS.** The Supabase schema uses public allow-all policies. A production deployment would require authentication and ownership-scoped policies.
-- **No real payments.** The Pro tier is a local preview only. No payment gateway is wired. The waitlist collects interest but does not charge.
-- **AI Coach is heuristic, not trained.** The evaluator is a deterministic weighted linear model. It is not a neural network. A trained model is on the roadmap.
-- **Backend cold starts.** The deployed FastAPI Coach may be slower on the first request after inactivity, depending on the hosting plan. The local fallback protects the user experience if the backend is unavailable.
-- **No ELO system.** The leaderboard uses a formula-based score, not a full rating system.
-- **Supabase required for real multiplayer.** Cross-device play requires the Supabase env vars to be set. Without them, the multiplayer page shows a setup prompt.
-- **No persistent game history.** Stats are stored in `localStorage` and are lost if the browser storage is cleared.
+- **No authentication yet.** Player identity is stored locally, so private user profiles are not implemented.
+- **Prototype RLS.** The Supabase schema uses public demo policies. Production would require authentication and ownership-scoped policies.
+- **Cloud match history is implemented through Supabase.** Completed games can be saved to the `match_history` table, but without authentication it is not yet tied to permanent private user accounts.
+- **No real payments.** The Pro tier is a local preview/waitlist only. No payment gateway is wired.
+- **AI Coach is heuristic, not trained.** The evaluator is deterministic and explainable, not a neural network in the current build.
 
 ---
 
@@ -469,10 +466,10 @@ If the FastAPI AI Coach backend is not deployed or is temporarily unavailable, t
 - [ ] Authentication (email / Kaspi OAuth)
 - [ ] Secure room ownership (host-only writes)
 - [ ] ELO rating system and player profiles
-- [ ] Cloud-backed game history
+- [ ] Authenticated private match history per user
 - [ ] Trained move-quality model replacing the heuristic evaluator
 - [ ] Kaspi Pay / Freedom Pay / CloudPayments integration for Pro subscriptions
-- [ ] Tournament mode with bracket management
+- [ ] Advanced online tournament mode with persistent brackets
 - [ ] Mobile app (React Native / Expo)
 - [ ] Extended AI Coach (20+ features, opening theory database)
 
