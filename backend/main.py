@@ -20,12 +20,15 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
+        "https://nardy-blitz.vercel.app",
         "http://localhost:3000",
         "http://localhost:3001",
-        "http://localhost:5173",
+        "http://localhost:3002",
+        "http://localhost:3003",
+        "http://localhost:3004",
         "http://127.0.0.1:3000",
-        "http://127.0.0.1:5173",
     ],
+    allow_origin_regex=r"https://.*\.vercel\.app",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -34,7 +37,7 @@ app.add_middleware(
 
 @app.get("/health")
 def health():
-    return {"ok": True}
+    return {"ok": True, "service": "nardy-blitz-ai-coach"}
 
 
 @app.post("/api/analyze-game", response_model=AnalyzeGameResponse)

@@ -321,12 +321,25 @@ Without Supabase env vars, the app runs fully in local mode. The `/multiplayer` 
 
 ### AI Coach Backend (optional)
 
+Production backend:
+
+- Base URL: https://nardy-blitz-ai-coach.vercel.app
+- Analyze endpoint: `https://nardy-blitz-ai-coach.vercel.app/api/analyze-game`
+- Health endpoint: `https://nardy-blitz-ai-coach.vercel.app/health`
+
 ```bash
 cd backend
 python3 -m venv .venv
 source .venv/bin/activate        # Windows: .venv\Scripts\activate
 python3 -m pip install -r requirements.txt
 python3 -m uvicorn main:app --reload --port 8000
+```
+
+To smoke-test a running backend:
+
+```bash
+python3 backend/smoke_test.py
+python3 backend/smoke_test.py https://nardy-blitz-ai-coach.vercel.app/api/analyze-game
 ```
 
 If the backend is offline or not deployed, the frontend automatically uses the local JavaScript fallback evaluator. The coach still runs; no manual configuration is needed.
@@ -406,11 +419,11 @@ Add the following in **Vercel Project Settings → Environment Variables**:
 |---|---|---|
 | `NEXT_PUBLIC_SUPABASE_URL` | Optional | Enables multiplayer and leaderboard |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Optional | Supabase anon/public key |
-| `NEXT_PUBLIC_COACH_API_URL` | Optional | AI Coach backend URL. If unset, local fallback runs in-browser. |
+| `NEXT_PUBLIC_COACH_API_URL` | Optional | `https://nardy-blitz-ai-coach.vercel.app/api/analyze-game`. If unset, local fallback runs in-browser. |
 
 Redeploy after adding variables. The invite link uses `window.location.origin` and automatically picks up the Vercel domain.
 
-If the FastAPI AI Coach backend is not deployed, the local fallback evaluator activates automatically. No configuration is needed.
+If the FastAPI AI Coach backend is not deployed or is temporarily unavailable, the local fallback evaluator activates automatically. No configuration is needed.
 
 ---
 
@@ -436,6 +449,7 @@ If the FastAPI AI Coach backend is not deployed, the local fallback evaluator ac
 - **Prototype RLS.** The Supabase schema uses public allow-all policies. A production deployment would require authentication and ownership-scoped policies.
 - **No real payments.** The Pro tier is a local preview only. No payment gateway is wired. The waitlist collects interest but does not charge.
 - **AI Coach is heuristic, not trained.** The evaluator is a deterministic weighted linear model. It is not a neural network. A trained model is on the roadmap.
+- **Backend cold starts.** The deployed FastAPI Coach may be slower on the first request after inactivity, depending on the hosting plan. The local fallback protects the user experience if the backend is unavailable.
 - **No ELO system.** The leaderboard uses a formula-based score, not a full rating system.
 - **Supabase required for real multiplayer.** Cross-device play requires the Supabase env vars to be set. Without them, the multiplayer page shows a setup prompt.
 - **No persistent game history.** Stats are stored in `localStorage` and are lost if the browser storage is cleared.

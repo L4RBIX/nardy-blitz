@@ -1,0 +1,9 @@
+{
+  "experimentalServices": {
+    "web": {
+      "framework": "fastapi",
+      "entrypoint": "app.py",
+      "routePrefix": "/"
+    }
+  }
+}
