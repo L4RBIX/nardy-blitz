@@ -1,8 +1,10 @@
 "use client";
 
 import { motion, AnimatePresence } from "framer-motion";
-import type { CoachInsight, Player, GameMode } from "../types";
+import type { CoachInsight, Player, GameMode, Move, GameState } from "../types";
 import type { BackendCoachReport, BackendCoachInsight } from "../lib/coachApi";
+import { generateDeepCoachReport } from "../game/deepCoach";
+import { isProPreviewUnlocked } from "../lib/pro";
 
 // ── Local insight display config ──────────────────────────────────────────────
 
@@ -148,16 +150,67 @@ interface CoachModalProps {
   analysisError?: string | null;
   humanPlayer?: Player;
   mode: GameMode;
+  history?: Move[];
+  gameState?: GameState;
   onClose: () => void;
+}
+
+// ── Deep Coach Report UI ──────────────────────────────────────────────────────
+
+function DeepCoachSection({ history, gameState, player }: {
+  history: Move[];
+  gameState: GameState;
+  player: Player;
+}) {
+  const report = generateDeepCoachReport(gameState, history, player);
+
+  if (!report) {
+    return (
+      <div
+        className="rounded-xl px-4 py-3 text-[11px] leading-relaxed"
+        style={{ background: "rgba(217,119,6,0.04)", border: "1px solid rgba(217,119,6,0.1)", color: "var(--text-muted)" }}
+      >
+        Play a longer game to unlock deeper analysis.
+      </div>
+    );
+  }
+
+  const rows = [
+    { label: "Opening phase",   value: report.phaseSummary  },
+    { label: "Midgame risk",    value: report.tacticalRisk  },
+    { label: "Dice use",        value: report.diceUse       },
+    { label: "Board control",   value: report.boardControl  },
+    { label: "Training focus",  value: report.trainingFocus },
+  ];
+
+  return (
+    <div className="space-y-2">
+      {rows.map(({ label, value }) => (
+        <div
+          key={label}
+          className="rounded-xl px-4 py-3"
+          style={{ background: "rgba(14,22,39,0.6)", border: "1px solid rgba(255,255,255,0.06)" }}
+        >
+          <p className="font-mono text-[9px] uppercase tracking-widest mb-1" style={{ color: "var(--gold-bright)" }}>
+            {label}
+          </p>
+          <p className="text-[12px] leading-relaxed" style={{ color: "rgba(241,245,249,0.72)" }}>
+            {value}
+          </p>
+        </div>
+      ))}
+    </div>
+  );
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
 
 export function CoachModal({
   isOpen, winner, insights, backendReport, isAnalyzing, analysisError,
-  humanPlayer, mode, onClose,
+  humanPlayer, mode, history, gameState, onClose,
 }: CoachModalProps) {
   const effectiveHuman = humanPlayer ?? "white";
+  const proUnlocked = typeof window !== "undefined" ? isProPreviewUnlocked() : false;
   const isVsBot = mode === "vs-bot";
 
   // Winner label from analyzed player's perspective
@@ -457,6 +510,28 @@ export function CoachModal({
                     </motion.div>
                   )}
                 </>
+              )}
+
+              {/* ── Deep Coach Report (Pro) ─────────────────────────── */}
+              {!isAnalyzing && proUnlocked && history && gameState && (
+                <motion.div
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.3, delay: 0.2 }}
+                >
+                  <div className="flex items-center gap-2 mb-3">
+                    <p className="text-[9px] font-mono uppercase tracking-widest" style={{ color: "var(--text-dim)" }}>
+                      Deep Coach Report
+                    </p>
+                    <span
+                      className="inline-flex items-center px-1.5 py-0.5 rounded font-mono text-[8px] tracking-widest uppercase"
+                      style={{ background: "rgba(217,119,6,0.1)", border: "1px solid rgba(217,119,6,0.2)", color: "var(--gold-bright)" }}
+                    >
+                      Pro
+                    </span>
+                  </div>
+                  <DeepCoachSection history={history} gameState={gameState} player={effectiveHuman} />
+                </motion.div>
               )}
 
               {/* CTA */}

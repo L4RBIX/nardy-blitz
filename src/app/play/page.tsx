@@ -297,6 +297,8 @@ export default function PlayPage() {
         analysisError={analysisError}
         mode={mode}
         humanPlayer={humanPlayer}
+        history={history}
+        gameState={gameState}
         onClose={dismissCoach}
       />
 

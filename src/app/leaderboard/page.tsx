@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import { isSupabaseConfigured, supabase } from "../../lib/supabase";
+import { getBadgeMeta } from "../../lib/badges";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -20,6 +21,7 @@ interface LeaderboardEntry {
   win_rate: number;
   favorite_difficulty: string | null;
   created_at: string;
+  badges?: string[];
 }
 
 // ── Demo data (shown when Supabase is not configured) ─────────────────────────
@@ -127,6 +129,8 @@ export default function LeaderboardPage() {
       <nav className="relative z-10 flex items-center justify-between px-6 py-5" style={{ borderBottom: "1px solid var(--border)" }}>
         <Link href="/" className="font-sans text-sm font-semibold" style={{ color: "var(--text-muted)" }}>Nardy Blitz</Link>
         <div className="flex items-center gap-3">
+          <Link href="/history" className="font-mono text-[11px] tracking-wider transition-colors duration-150" style={{ color: "#475569" }}>History</Link>
+          <Link href="/tournament" className="font-mono text-[11px] tracking-wider transition-colors duration-150" style={{ color: "#475569" }}>Tournament</Link>
           <Link href="/multiplayer" className="font-mono text-[11px] tracking-wider transition-colors duration-150" style={{ color: "#475569" }}>Multiplayer</Link>
           <Link href="/stats" className="font-mono text-[11px] tracking-wider transition-colors duration-150" style={{ color: "#475569" }}>Stats</Link>
           <Link href="/play" className="font-mono text-[11px] tracking-wide px-4 py-1.5 rounded-xl" style={{ background: "rgba(217,119,6,0.08)", border: "1px solid rgba(217,119,6,0.15)", color: "var(--gold-bright)" }}>Play</Link>
@@ -226,10 +230,25 @@ export default function LeaderboardPage() {
                       <span className="md:hidden font-mono font-semibold text-sm" style={{ color: "var(--gold-bright)" }}>{e.score.toLocaleString()}</span>
                     </div>
 
-                    {/* Name */}
-                    <div className="flex items-center gap-2">
-                      <span className="font-sans font-medium text-sm" style={{ color: "var(--text-primary)" }}>{e.player_name}</span>
-                      <span className="md:hidden font-mono text-[10px] px-2 py-0.5 rounded-md" style={{ background: "rgba(255,255,255,0.04)", color: "var(--text-dim)" }}>{e.city}</span>
+                    {/* Name + badges */}
+                    <div className="flex flex-col gap-1">
+                      <div className="flex items-center gap-2">
+                        <span className="font-sans font-medium text-sm" style={{ color: "var(--text-primary)" }}>{e.player_name}</span>
+                        <span className="md:hidden font-mono text-[10px] px-2 py-0.5 rounded-md" style={{ background: "rgba(255,255,255,0.04)", color: "var(--text-dim)" }}>{e.city}</span>
+                      </div>
+                      {e.badges && e.badges.length > 0 && (
+                        <div className="flex flex-wrap gap-1">
+                          {e.badges.map((bid) => {
+                            const meta = getBadgeMeta(bid);
+                            if (!meta) return null;
+                            return (
+                              <span key={bid} className="font-mono text-[8px] px-1.5 py-0.5 rounded" style={{ background: meta.bg, border: `1px solid ${meta.border}`, color: meta.color }}>
+                                {meta.label}
+                              </span>
+                            );
+                          })}
+                        </div>
+                      )}
                     </div>
 
                     {/* City (desktop) */}

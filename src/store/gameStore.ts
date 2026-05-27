@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { BotDifficulty, GameState, Move, Player, GameMode, GameStats, RecentGame } from "../types";
+import type { BotDifficulty, GameState, Move, Player, GameMode, RecentGame } from "../types";
 import {
   initializeGame,
   rollDice,
@@ -16,156 +16,13 @@ import { encodeState, decodeState } from "../game/serialize";
 import type { CoachInsight, PointIndex } from "../types";
 import { analyzeGameWithBackend } from "../lib/coachApi";
 import type { BackendCoachReport } from "../lib/coachApi";
+import { isProPreviewUnlocked } from "../lib/pro";
+import { isSupabaseConfigured, supabase } from "../lib/supabase";
+import { recordCompletedGame, patchGameWithCoachData } from "../lib/stats";
 
-// ── Persistence helpers ────────────────────────────────────────────────────────
+// ── Persistence helpers (difficulty only — stats live in lib/stats) ───────────
 
-const STATS_KEY      = "nardy_blitz_stats";
 const DIFFICULTY_KEY = "nardy_blitz_difficulty";
-
-function defaultStats(): GameStats {
-  return {
-    gamesPlayed: 0, winsVsBot: 0, lossesVsBot: 0,
-    totalDurationMs: 0, currentStreak: 0, longestStreak: 0, games: [],
-    totalCoachScore: 0, totalCoachScoreGames: 0, bestCoachScore: 0,
-    totalDiceEfficiency: 0, totalDiceEfficiencyGames: 0,
-    totalHitsMade: 0, totalPointsMade: 0, totalBlotsLeft: 0, totalBarEntries: 0,
-    difficultyStats: { easy: 0, balanced: 0, hard: 0 },
-    recentGames: [],
-  };
-}
-
-function loadStats(): GameStats {
-  if (typeof window === "undefined") return defaultStats();
-  try {
-    const raw = localStorage.getItem(STATS_KEY);
-    if (!raw) return defaultStats();
-    const p = JSON.parse(raw) as Partial<GameStats>;
-    // Safe migration — fill every field, never throw
-    return {
-      gamesPlayed:           p.gamesPlayed           ?? 0,
-      winsVsBot:             p.winsVsBot             ?? 0,
-      lossesVsBot:           p.lossesVsBot           ?? 0,
-      totalDurationMs:       p.totalDurationMs       ?? 0,
-      currentStreak:         p.currentStreak         ?? 0,
-      longestStreak:         p.longestStreak         ?? 0,
-      games:                 p.games                 ?? [],
-      totalCoachScore:       p.totalCoachScore       ?? 0,
-      totalCoachScoreGames:  p.totalCoachScoreGames  ?? 0,
-      bestCoachScore:        p.bestCoachScore        ?? 0,
-      totalDiceEfficiency:   p.totalDiceEfficiency   ?? 0,
-      totalDiceEfficiencyGames: p.totalDiceEfficiencyGames ?? 0,
-      totalHitsMade:         p.totalHitsMade         ?? 0,
-      totalPointsMade:       p.totalPointsMade       ?? 0,
-      totalBlotsLeft:        p.totalBlotsLeft        ?? 0,
-      totalBarEntries:       p.totalBarEntries       ?? 0,
-      difficultyStats:       p.difficultyStats       ?? { easy: 0, balanced: 0, hard: 0 },
-      recentGames:           p.recentGames           ?? [],
-    };
-  } catch { /* ignore */ }
-  return defaultStats();
-}
-
-function saveStats(stats: GameStats) {
-  if (typeof window === "undefined") return;
-  try { localStorage.setItem(STATS_KEY, JSON.stringify(stats)); } catch { /* ignore */ }
-}
-
-/** Record a completed game. Returns a stable ID for later coach-data patching. */
-function recordGameResult(
-  winner:       Player,
-  mode:         GameMode,
-  durationMs:   number,
-  humanPlayer:  Player,
-  botDifficulty: BotDifficulty,
-  isSurrender:  boolean,
-): string {
-  const stats = loadStats();
-  stats.gamesPlayed   += 1;
-  stats.totalDurationMs += durationMs;
-
-  const humanWon = mode === "vs-bot" ? winner === humanPlayer : winner === "white";
-
-  if (mode === "vs-bot") {
-    if (humanWon) {
-      stats.winsVsBot     += 1;
-      stats.currentStreak += 1;
-      if (stats.currentStreak > stats.longestStreak) stats.longestStreak = stats.currentStreak;
-    } else {
-      stats.lossesVsBot   += 1;
-      stats.currentStreak  = 0;
-    }
-    const ds = stats.difficultyStats ?? { easy: 0, balanced: 0, hard: 0 };
-    ds[botDifficulty] = (ds[botDifficulty] ?? 0) + 1;
-    stats.difficultyStats = ds;
-  }
-
-  let result: RecentGame["result"];
-  if (mode === "vs-bot") {
-    if (humanWon)  result = isSurrender ? "win_by_surrender"  : "win";
-    else           result = isSurrender ? "loss_by_surrender" : "loss";
-  } else {
-    result = winner === "white" ? "win" : "loss";
-  }
-
-  const id = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-  const recentGame: RecentGame = {
-    id,
-    date: Date.now(),
-    mode,
-    result,
-    winner,
-    ...(mode === "vs-bot" && { humanPlayer, botDifficulty }),
-    durationSeconds: durationMs / 1000,
-  };
-
-  stats.games.push({ winner, mode, durationMs, date: Date.now() });
-  stats.recentGames = [...(stats.recentGames ?? []), recentGame].slice(-10);
-
-  saveStats(stats);
-  return id;
-}
-
-/** Patch an existing recentGames entry with coach report data once analysis completes. */
-function patchLastGameWithCoachData(
-  gameId: string,
-  coachData: {
-    coachScore?: number;
-    grade?: "A" | "B" | "C" | "D";
-    diceEfficiency?: number;
-    hitsMade?: number;
-    pointsMade?: number;
-    blotsLeft?: number;
-    barEntries?: number;
-    analysisMode: "backend-ml-style-evaluator" | "local-fallback";
-  },
-) {
-  if (typeof window === "undefined") return;
-  try {
-    const stats = loadStats();
-    const games = stats.recentGames ?? [];
-    const idx   = games.findIndex((g) => g.id === gameId);
-    if (idx === -1) return;
-
-    games[idx] = { ...games[idx], ...coachData };
-    stats.recentGames = games;
-
-    if (coachData.coachScore !== undefined) {
-      stats.totalCoachScore      = (stats.totalCoachScore      ?? 0) + coachData.coachScore;
-      stats.totalCoachScoreGames = (stats.totalCoachScoreGames ?? 0) + 1;
-      if (coachData.coachScore > (stats.bestCoachScore ?? 0)) stats.bestCoachScore = coachData.coachScore;
-    }
-    if (coachData.diceEfficiency !== undefined) {
-      stats.totalDiceEfficiency      = (stats.totalDiceEfficiency      ?? 0) + coachData.diceEfficiency;
-      stats.totalDiceEfficiencyGames = (stats.totalDiceEfficiencyGames ?? 0) + 1;
-    }
-    if (coachData.hitsMade    !== undefined) stats.totalHitsMade    = (stats.totalHitsMade    ?? 0) + coachData.hitsMade;
-    if (coachData.pointsMade  !== undefined) stats.totalPointsMade  = (stats.totalPointsMade  ?? 0) + coachData.pointsMade;
-    if (coachData.blotsLeft   !== undefined) stats.totalBlotsLeft   = (stats.totalBlotsLeft   ?? 0) + coachData.blotsLeft;
-    if (coachData.barEntries  !== undefined) stats.totalBarEntries  = (stats.totalBarEntries  ?? 0) + coachData.barEntries;
-
-    saveStats(stats);
-  } catch { /* ignore */ }
-}
 
 function loadDifficulty(): BotDifficulty {
   if (typeof window === "undefined") return "balanced";
@@ -179,6 +36,18 @@ function loadDifficulty(): BotDifficulty {
 function saveDifficulty(d: BotDifficulty) {
   if (typeof window === "undefined") return;
   try { localStorage.setItem(DIFFICULTY_KEY, d); } catch { /* ignore */ }
+}
+
+// ── Helpers: compute result for the local player ──────────────────────────────
+
+function botResult(
+  winner: Player,
+  humanPlayer: Player,
+  isSurrender: boolean,
+): RecentGame["result"] {
+  const humanWon = winner === humanPlayer;
+  if (humanWon) return isSurrender ? "win_by_surrender" : "win";
+  return isSurrender ? "loss_by_surrender" : "loss";
 }
 
 // ── Store interface ────────────────────────────────────────────────────────────
@@ -324,7 +193,10 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
     if (winner) {
       const durationMs = Date.now() - newState.startedAt;
-      const gameId = recordGameResult(winner, mode, durationMs, humanPlayer, botDifficulty, false);
+      const result = mode === "vs-bot"
+        ? botResult(winner, humanPlayer, false)
+        : (winner === "white" ? "win" : "loss");
+      const gameId = recordCompletedGame({ mode, result, winner, humanPlayer, botDifficulty, durationMs });
       let insights: CoachInsight[] = [];
       try { insights = generateInsights(newState.history, newState); } catch { /* non-fatal */ }
       set({ gameState: newState, selectedFrom: null, legalMoves: [], insights, _lastGameId: gameId });
@@ -361,7 +233,11 @@ export const useGameStore = create<GameStore>((set, get) => ({
     const winner: Player = mode === "vs-bot" ? botPlayer : opponent(gameState.turn);
     const durationMs = Date.now() - gameState.startedAt;
     const newState: GameState = { ...gameState, winner, dice: null };
-    const gameId = recordGameResult(winner, mode, durationMs, humanPlayer, botDifficulty, true);
+
+    const result = mode === "vs-bot"
+      ? botResult(winner, humanPlayer, true)
+      : "loss_by_surrender";
+    const gameId = recordCompletedGame({ mode, result, winner, humanPlayer, botDifficulty, durationMs });
 
     let insights: CoachInsight[] = [];
     try { insights = generateInsights(gameState.history, newState); } catch { /* non-fatal */ }
@@ -413,7 +289,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
       if (get().showCoach) {
         set({ backendReport: report, isAnalyzing: false });
         if (_lastGameId && report.metrics) {
-          patchLastGameWithCoachData(_lastGameId, {
+          patchGameWithCoachData(_lastGameId, {
             coachScore:     report.coachScore,
             grade:          report.grade,
             diceEfficiency: report.metrics.diceEfficiency,
@@ -424,12 +300,40 @@ export const useGameStore = create<GameStore>((set, get) => ({
             analysisMode:   "backend-ml-style-evaluator",
           });
         }
+
+        // Cloud save to match_history when Pro preview is active
+        if (isProPreviewUnlocked() && isSupabaseConfigured && supabase) {
+          const { gameState: gs, mode: m, humanPlayer: hp, botDifficulty: bd } = get();
+          supabase.from("match_history").insert({
+            mode:             m,
+            result:           report.result ?? null,
+            player_color:     hp,
+            difficulty:       bd,
+            duration_seconds: Math.round(durationSeconds),
+            coach_score:      report.coachScore ?? null,
+            grade:            report.grade ?? null,
+            dice_efficiency:  report.metrics?.diceEfficiency ?? null,
+            moves_count:      gs.history.length,
+          }).then(() => { /* silent — local history is the source of truth */ });
+        }
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Backend unavailable";
       set({ analysisError: msg, isAnalyzing: false });
       if (_lastGameId) {
-        patchLastGameWithCoachData(_lastGameId, { analysisMode: "local-fallback" });
+        patchGameWithCoachData(_lastGameId, { analysisMode: "local-fallback" });
+      }
+
+      // Cloud save with local-analysis data when backend unavailable
+      if (isProPreviewUnlocked() && isSupabaseConfigured && supabase) {
+        const { gameState: gs, mode: m, humanPlayer: hp, botDifficulty: bd } = get();
+        supabase.from("match_history").insert({
+          mode:             m,
+          player_color:     hp,
+          difficulty:       bd,
+          duration_seconds: Math.round(durationSeconds),
+          moves_count:      gs.history.length,
+        }).then(() => { /* silent */ });
       }
     }
   },
@@ -495,7 +399,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
           if (winner) {
             const { humanPlayer, botDifficulty: diff } = get();
             const durationMs = Date.now() - current.startedAt;
-            const gameId = recordGameResult(winner, "vs-bot", durationMs, humanPlayer, diff, false);
+            const result = botResult(winner, humanPlayer, false);
+            const gameId = recordCompletedGame({ mode: "vs-bot", result, winner, humanPlayer, botDifficulty: diff, durationMs });
             let insights: CoachInsight[] = [];
             try { insights = generateInsights(current.history, current); } catch { /* non-fatal */ }
             set({ gameState: current, isBotThinking: false, legalMoves: [], insights, _lastGameId: gameId });

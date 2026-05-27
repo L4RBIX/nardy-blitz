@@ -111,14 +111,17 @@ The FastAPI backend (`/api/analyze-game`) is optional. If it is unreachable or n
 
 All stats are stored in `localStorage` — no account required.
 
-- Games played, wins, losses, win rate
+- Games played, wins, losses, win rate — **bot, local, and multiplayer games combined**
 - Current streak, longest streak
 - Average coach score, best coach score
 - Average dice efficiency
 - Total hits made, points made, blots left, bar entries
-- Per-difficulty breakdown: Easy / Balanced / Hard
-- Recent game history: result, mode, color, difficulty, duration, coach score, grade
+- Per-difficulty breakdown: Easy / Balanced / Hard (bot games)
+- Multiplayer section: MP games, MP wins, MP losses, MP win rate
+- Recent game history: result, mode (`Bot` / `Local` / `Multi`), color, difficulty, duration, coach score, grade
 - Submit score to city leaderboard from the stats page
+
+**Multiplayer stats recording:** When a multiplayer room reaches `status = "finished"`, each participant's browser records the result once using a localStorage deduplication key (`nardy_blitz_recorded_multiplayer_<roomId>`). This prevents double-counting from Realtime and polling both delivering the finished state, and prevents re-recording on page refresh.
 
 ### Multiplayer
 
@@ -135,10 +138,15 @@ All stats are stored in `localStorage` — no account required.
 
 ### City Leaderboard
 
-- Score formula: `round(avgCoachScore × 10 + wins × 25 + bestCoachScore × 5 + winRate × 2)`
+- Score formula: `round(totalWins × 25 + multiplayerWins × 15 + avgCoachScore × 10 + bestCoachScore × 5 + winRate × 2)`
+  - `totalWins` = bot wins + multiplayer wins
+  - Multiplayer wins receive an additional `× 15` bonus (human vs human is harder than vs bot)
+  - `winRate` is calculated across all modes
+- Leaderboard submission (`/stats` → Submit my score) posts `wins`, `losses`, `win_rate`, and `games_played` aggregated across all game modes
 - City filter chips: All · Almaty · Astana · Shymkent · Other
 - Desktop table layout with gold / silver / bronze rank markers
 - Mobile stacked card layout
+- Badge chips displayed under player names for earned achievement badges
 - When Supabase is not configured, a demo preview with 8 sample entries is shown
 
 ### Pro Monetization Prototype

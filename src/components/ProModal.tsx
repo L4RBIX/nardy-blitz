@@ -15,13 +15,13 @@ export interface ProModalProps {
   onPreviewUnlocked?: () => void;
 }
 
-const BENEFITS = [
-  "Premium board skins",
-  "Deeper AI Coach reports",
-  "Cloud-saved match history",
-  "Private friend rooms",
-  "City leaderboard badges",
-  "Family tournament mode",
+const BENEFITS: Array<{ label: string; detail: string }> = [
+  { label: "Premium board skins",       detail: "Obsidian, Emerald, Walnut" },
+  { label: "Deeper AI Coach reports",   detail: "Phase, risk, dice, focus analysis" },
+  { label: "Cloud-saved match history", detail: "Supabase-backed history page" },
+  { label: "Private friend rooms",      detail: "PIN-protected invite rooms" },
+  { label: "City leaderboard badges",   detail: "Earn badges for stats milestones" },
+  { label: "Family tournament mode",    detail: "Local bracket for 2–8 players" },
 ];
 
 export function ProModal({ isOpen, onClose, onPreviewUnlocked }: ProModalProps) {
@@ -52,10 +52,16 @@ export function ProModal({ isOpen, onClose, onPreviewUnlocked }: ProModalProps) 
     setView("success");
   }
 
+  const [unlockSuccess, setUnlockSuccess] = useState(false);
+
   function handlePreviewUnlock() {
     unlockProPreview();
-    handleClose();
-    onPreviewUnlocked?.();
+    setUnlockSuccess(true);
+    setTimeout(() => {
+      setUnlockSuccess(false);
+      handleClose();
+      onPreviewUnlocked?.();
+    }, 1200);
   }
 
   const inputStyle: React.CSSProperties = {
@@ -164,16 +170,19 @@ export function ProModal({ isOpen, onClose, onPreviewUnlocked }: ProModalProps) 
                       {/* Benefits */}
                       <ul className="flex flex-col gap-2 mb-5">
                         {BENEFITS.map((b) => (
-                          <li key={b} className="flex items-center gap-2.5">
+                          <li key={b.label} className="flex items-start gap-2.5">
                             <span
-                              className="w-4 h-4 rounded-full flex-shrink-0 flex items-center justify-center"
+                              className="mt-0.5 w-4 h-4 rounded-full flex-shrink-0 flex items-center justify-center"
                               style={{ background: "rgba(16,185,129,0.12)", border: "1px solid rgba(16,185,129,0.2)" }}
                             >
                               <svg width="8" height="8" viewBox="0 0 8 8" fill="none" aria-hidden>
                                 <path d="M1 4l2 2 4-4" stroke="#10B981" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
                               </svg>
                             </span>
-                            <span className="text-sm" style={{ color: "var(--text-muted)", fontWeight: 300 }}>{b}</span>
+                            <div>
+                              <span className="text-sm block" style={{ color: "var(--text-muted)", fontWeight: 400 }}>{b.label}</span>
+                              <span className="text-[10px]" style={{ color: "var(--text-dim)" }}>{b.detail}</span>
+                            </div>
                           </li>
                         ))}
                       </ul>
@@ -194,13 +203,13 @@ export function ProModal({ isOpen, onClose, onPreviewUnlocked }: ProModalProps) 
                         <button
                           onClick={handlePreviewUnlock}
                           className="w-full py-2.5 rounded-xl font-sans text-sm tracking-wide transition-all duration-150 cursor-pointer"
-                          style={{
-                            background: "rgba(255,255,255,0.04)",
-                            border: "1px solid rgba(255,255,255,0.1)",
-                            color: "var(--text-muted)",
-                          }}
+                          style={
+                            unlockSuccess
+                              ? { background: "rgba(16,185,129,0.1)", border: "1px solid rgba(16,185,129,0.2)", color: "#10B981" }
+                              : { background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.1)", color: "var(--text-muted)" }
+                          }
                         >
-                          Preview Pro Skins
+                          {unlockSuccess ? "Pro Preview unlocked on this device." : "Preview Pro Features"}
                         </button>
                       </div>
 
@@ -209,8 +218,8 @@ export function ProModal({ isOpen, onClose, onPreviewUnlocked }: ProModalProps) 
                         className="mt-4 text-[11px] leading-relaxed text-center"
                         style={{ color: "var(--text-dim)", fontWeight: 300 }}
                       >
-                        Payments are not enabled in this prototype. For Kazakhstan launch, Nardy Blitz
-                        would use Kaspi Pay, Freedom Pay, CloudPayments, or local acquiring.
+                        Payments are not enabled in this prototype. Pro Preview unlocks all features on this device only.
+                        For Kazakhstan launch, Nardy Blitz would use Kaspi Pay, Freedom Pay, CloudPayments, or local acquiring.
                       </p>
                     </motion.div>
                   )}
@@ -349,7 +358,7 @@ export function ProModal({ isOpen, onClose, onPreviewUnlocked }: ProModalProps) 
                           boxShadow: "0 4px 16px rgba(217,119,6,0.2)",
                         }}
                       >
-                        Preview Pro Skins
+                        Preview Pro Features
                       </button>
                     </motion.div>
                   )}

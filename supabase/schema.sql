@@ -163,7 +163,68 @@ create policy "public_select_waitlist" on pro_waitlist
 
 
 -- ══════════════════════════════════════════════════════════════
--- 4. Enable Realtime for multiplayer_rooms
+-- 4. multiplayer_rooms — Pro private room columns (idempotent)
+-- ══════════════════════════════════════════════════════════════
+
+do $$ begin
+  alter table multiplayer_rooms add column is_private boolean not null default false;
+exception when duplicate_column then null;
+end $$;
+
+do $$ begin
+  alter table multiplayer_rooms add column room_pin text;
+exception when duplicate_column then null;
+end $$;
+
+
+-- ══════════════════════════════════════════════════════════════
+-- 5. leaderboard_entries — badges column (idempotent)
+-- ══════════════════════════════════════════════════════════════
+
+do $$ begin
+  alter table leaderboard_entries add column badges text[] default '{}';
+exception when duplicate_column then null;
+end $$;
+
+
+-- ══════════════════════════════════════════════════════════════
+-- 6. match_history — cloud-saved Pro match history
+-- ══════════════════════════════════════════════════════════════
+-- Prototype-only public policy. Production requires auth.
+
+create table if not exists match_history (
+  id               uuid        primary key default gen_random_uuid(),
+  created_at       timestamptz default now(),
+  player_name      text,
+  city             text        default 'Unknown',
+  mode             text,
+  result           text,
+  player_color     text,
+  difficulty       text,
+  duration_seconds integer,
+  coach_score      numeric,
+  grade            text,
+  dice_efficiency  numeric,
+  moves_count      integer,
+  game_state       jsonb,
+  coach_report     jsonb
+);
+
+alter table match_history enable row level security;
+
+drop policy if exists "public_select_match_history" on match_history;
+drop policy if exists "public_insert_match_history" on match_history;
+
+-- Prototype-only public policies — replace with auth-based policies in production
+create policy "public_select_match_history" on match_history
+  for select using (true);
+
+create policy "public_insert_match_history" on match_history
+  for insert with check (true);
+
+
+-- ══════════════════════════════════════════════════════════════
+-- 7. Enable Realtime for multiplayer_rooms
 -- ══════════════════════════════════════════════════════════════
 -- NOTE: Supabase's default publication already exists.
 -- This adds multiplayer_rooms to it so Realtime events fire.
@@ -179,4 +240,5 @@ end $$;
 -- Done. Verify with:
 --   select * from multiplayer_rooms limit 5;
 --   select * from leaderboard_entries limit 5;
+--   select * from match_history limit 5;
 -- ══════════════════════════════════════════════════════════════

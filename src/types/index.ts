@@ -44,7 +44,7 @@ export interface CoachInsight {
   moveIndex: number;
 }
 
-export type GameMode = "vs-bot" | "2player";
+export type GameMode = "vs-bot" | "2player" | "multiplayer";
 
 export interface RecentGame {
   id: string;
@@ -61,6 +61,7 @@ export interface RecentGame {
   hitsMade?: number;
   pointsMade?: number;
   blotsLeft?: number;
+  barEntries?: number;
   analysisMode?: "backend-ml-style-evaluator" | "local-fallback";
 }
 
@@ -90,4 +91,7 @@ export interface GameStats {
   totalBarEntries?: number;
   difficultyStats?: { easy: number; balanced: number; hard: number };
   recentGames?: RecentGame[];
+  // Multiplayer tracking — added in v2; zero-defaulted on old saves
+  winsMultiplayer?: number;
+  lossesMultiplayer?: number;
 }

@@ -5,6 +5,8 @@ import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import { isSupabaseConfigured, supabase } from "../../lib/supabase";
 import { getRoomRole, setRoomRole } from "../../lib/multiplayerIdentity";
+import { isProPreviewUnlocked } from "../../lib/pro";
+import { recordCompletedGame } from "../../lib/stats";
 import {
   initializeGame,
   rollDice,
@@ -38,6 +40,8 @@ interface MultiplayerRoom {
   game_state: GameState;
   winner: string | null;
   end_reason: string | null;
+  is_private: boolean;
+  room_pin: string | null;
 }
 
 type MyRole = "host" | "guest";
@@ -192,12 +196,19 @@ export default function MultiplayerPage() {
   const [copied, setCopied]       = useState(false);
   const [connStatus, setConnStatus] = useState<ConnStatus>("connecting");
 
+  // Private room state
+  const [isPrivate, setIsPrivate]       = useState(false);
+  const [pinInput, setPinInput]         = useState("");
+  const [proUnlocked, setProUnlocked]   = useState(false);
+  const [showProNote, setShowProNote]   = useState(false);
+
   const [selectedFrom, setSelectedFrom] = useState<PointIndex | null>(null);
   const [legalMoves, setLegalMoves]     = useState<Move[]>([]);
   const [showSurrenderConfirm, setShowSurrenderConfirm] = useState(false);
 
-  const pollRef      = useRef<ReturnType<typeof setInterval> | null>(null);
-  const realtimeFired = useRef(false); // track if realtime has fired at least once
+  const pollRef        = useRef<ReturnType<typeof setInterval> | null>(null);
+  const realtimeFired  = useRef(false); // track if realtime has fired at least once
+  const statsRecorded  = useRef(false); // session-level guard — localStorage is the cross-session guard
 
   // ── Derive player color from room data (not hardcoded!) ───────────────────
   // white_player / black_player store which ROLE ("host"|"guest") plays that color.
@@ -215,6 +226,7 @@ export default function MultiplayerPage() {
   // ── Read room param + role from localStorage on mount ────────────────────
   useEffect(() => {
     if (typeof window === "undefined") return;
+    setProUnlocked(isProPreviewUnlocked());
     const params = new URLSearchParams(window.location.search);
     const rid = params.get("room");
     if (rid) {
@@ -252,6 +264,51 @@ export default function MultiplayerPage() {
     if (!roomId || !isSupabaseConfigured) return;
     fetchRoom(roomId);
   }, [roomId, fetchRoom]);
+
+  // ── Record completed game in local stats (once per room per browser) ─────
+  useEffect(() => {
+    if (!room || room.status !== "finished" || !myRole || !myColor || !roomId) return;
+    if (!room.winner) return;
+
+    // Session-level guard: don't record twice in the same page load
+    if (statsRecorded.current) return;
+
+    // Cross-session guard: don't record again after a page refresh
+    const guardKey = `nardy_blitz_recorded_multiplayer_${roomId}`;
+    if (typeof window !== "undefined" && localStorage.getItem(guardKey)) return;
+
+    statsRecorded.current = true;
+
+    const iWon       = room.winner === myColor;
+    const surrender  = room.end_reason === "surrender";
+    type R = "win" | "loss" | "win_by_surrender" | "loss_by_surrender";
+    const result: R = surrender
+      ? (iWon ? "win_by_surrender" : "loss_by_surrender")
+      : (iWon ? "win" : "loss");
+
+    const durationMs = Date.now() - room.game_state.startedAt;
+
+    recordCompletedGame({
+      mode:        "multiplayer",
+      result,
+      winner:      room.winner as "white" | "black",
+      humanPlayer: myColor,
+      durationMs,
+    });
+
+    // Optional cloud save to match_history (Pro + Supabase)
+    if (isProPreviewUnlocked() && isSupabaseConfigured && supabase) {
+      supabase.from("match_history").insert({
+        mode:             "multiplayer",
+        result,
+        player_color:     myColor,
+        duration_seconds: Math.round(durationMs / 1000),
+        moves_count:      room.game_state.history.length,
+      }).then(() => { /* silent */ });
+    }
+
+    try { localStorage.setItem(guardKey, "1"); } catch { /* quota */ }
+  }, [room?.status, room?.winner, room?.end_reason, myRole, myColor, roomId, room]);
 
   // ── Supabase Realtime + polling fallback ──────────────────────────────────
   useEffect(() => {
@@ -324,6 +381,10 @@ export default function MultiplayerPage() {
     const white_player = hostIsWhite ? "host" : "guest";
     const black_player = hostIsWhite ? "guest" : "host";
 
+    const pin = isPrivate
+      ? String(Math.floor(1000 + Math.random() * 9000))
+      : null;
+
     const { error: e } = await supabase.from("multiplayer_rooms").insert({
       id:           rid,
       status:       "waiting",
@@ -335,6 +396,8 @@ export default function MultiplayerPage() {
       game_state:   gs,
       winner:       null,
       end_reason:   null,
+      is_private:   isPrivate,
+      room_pin:     pin,
     });
 
     if (e) {
@@ -354,6 +417,15 @@ export default function MultiplayerPage() {
   // ── Join room — only sets guest_name + status, preserves existing game state
   async function handleJoinRoom() {
     if (!supabase || !roomId || !room) return;
+
+    // PIN validation for private rooms
+    if (room.is_private && room.room_pin) {
+      if (pinInput.trim() !== room.room_pin) {
+        setError("Incorrect room PIN. Please check with the host.");
+        return;
+      }
+    }
+
     setJoining(true);
     setError(null);
     const name = nameInput.trim() || "Guest";
@@ -555,6 +627,44 @@ export default function MultiplayerPage() {
                   style={{ background: "rgba(10,16,30,0.8)", border: "1px solid rgba(255,255,255,0.1)", color: "var(--text-primary)", outline: "none" }}
                 />
               </div>
+
+              {/* Private room toggle */}
+              <div className="flex items-center justify-between">
+                <div>
+                  <span className="font-mono text-[10px] uppercase tracking-widest" style={{ color: "var(--text-dim)" }}>
+                    Private room
+                  </span>
+                  {!proUnlocked && (
+                    <span
+                      className="ml-2 font-mono text-[8px] tracking-wider px-1.5 py-0.5 rounded"
+                      style={{ background: "rgba(217,119,6,0.08)", border: "1px solid rgba(217,119,6,0.15)", color: "var(--gold-bright)" }}
+                    >
+                      Pro
+                    </span>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!proUnlocked) { setShowProNote(true); return; }
+                    setIsPrivate((p) => !p);
+                  }}
+                  className="relative w-10 h-5 rounded-full transition-colors duration-200 cursor-pointer flex-shrink-0"
+                  style={{ background: isPrivate ? "#10B981" : "rgba(255,255,255,0.1)" }}
+                  aria-label="Toggle private room"
+                >
+                  <span
+                    className="absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white transition-transform duration-200"
+                    style={{ transform: isPrivate ? "translateX(20px)" : "translateX(0)" }}
+                  />
+                </button>
+              </div>
+              {showProNote && (
+                <p className="text-[11px] leading-relaxed" style={{ color: "var(--text-dim)" }}>
+                  Private rooms are a Pro feature. Click &ldquo;Upgrade to Pro&rdquo; on the play page and unlock Pro Preview.
+                </p>
+              )}
+
               {error && <p className="text-xs" style={{ color: "#F87171" }}>{error}</p>}
               <motion.button
                 onClick={handleCreateRoom}
@@ -569,7 +679,7 @@ export default function MultiplayerPage() {
                   opacity: creating ? 0.7 : 1,
                 }}
               >
-                {creating ? "Creating…" : "Create room"}
+                {creating ? "Creating…" : isPrivate ? "Create private room" : "Create room"}
               </motion.button>
             </div>
 
@@ -642,6 +752,30 @@ export default function MultiplayerPage() {
                 style={{ background: "rgba(10,16,30,0.8)", border: "1px solid rgba(255,255,255,0.1)", color: "var(--text-primary)", outline: "none" }}
               />
             </div>
+
+            {/* PIN input for private rooms */}
+            {room.is_private && (
+              <div className="flex flex-col gap-1.5">
+                <label className="font-mono text-[10px] uppercase tracking-widest flex items-center gap-2" style={{ color: "var(--text-dim)" }}>
+                  Room PIN
+                  <span className="font-mono text-[8px] tracking-wider px-1.5 py-0.5 rounded"
+                    style={{ background: "rgba(217,119,6,0.08)", border: "1px solid rgba(217,119,6,0.15)", color: "var(--gold-bright)" }}>
+                    Private
+                  </span>
+                </label>
+                <input
+                  value={pinInput}
+                  onChange={(e) => setPinInput(e.target.value.replace(/\D/g, "").slice(0, 4))}
+                  onKeyDown={(e) => { if (e.key === "Enter" && !joining) handleJoinRoom(); }}
+                  placeholder="4-digit PIN from host"
+                  inputMode="numeric"
+                  maxLength={4}
+                  className="rounded-xl px-3 py-2.5 text-sm font-mono tracking-widest"
+                  style={{ background: "rgba(10,16,30,0.8)", border: "1px solid rgba(217,119,6,0.2)", color: "var(--gold-bright)", outline: "none" }}
+                />
+              </div>
+            )}
+
             {error && <p className="text-xs" style={{ color: "#F87171" }}>{error}</p>}
             <button
               onClick={handleJoinRoom}
@@ -716,6 +850,21 @@ export default function MultiplayerPage() {
                 You are <strong style={{ color: "var(--text-primary)" }}>{myHostColor}</strong>. Share the invite link.
               </p>
             </div>
+
+            {/* PIN display for private rooms */}
+            {room.is_private && room.room_pin && (
+              <div
+                className="rounded-xl p-3 flex items-center justify-between"
+                style={{ background: "rgba(217,119,6,0.06)", border: "1px solid rgba(217,119,6,0.2)" }}
+              >
+                <span className="font-mono text-[10px] uppercase tracking-widest" style={{ color: "var(--text-dim)" }}>
+                  Room PIN
+                </span>
+                <span className="font-mono text-xl font-bold tracking-[0.2em]" style={{ color: "var(--gold-bright)" }}>
+                  {room.room_pin}
+                </span>
+              </div>
+            )}
 
             {/* Invite link — readable, selectable */}
             <div

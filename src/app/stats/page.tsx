@@ -5,6 +5,7 @@ import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import type { GameStats, RecentGame } from "../../types";
 import { isSupabaseConfigured, supabase } from "../../lib/supabase";
+import { calculateBadges, getBadgeMeta, BADGE_DEFS } from "../../lib/badges";
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 
@@ -47,6 +48,8 @@ function loadStats(): GameStats | null {
       totalBarEntries:          p.totalBarEntries          ?? 0,
       difficultyStats:          p.difficultyStats          ?? { easy: 0, balanced: 0, hard: 0 },
       recentGames:              p.recentGames              ?? [],
+      winsMultiplayer:          p.winsMultiplayer          ?? 0,
+      lossesMultiplayer:        p.lossesMultiplayer        ?? 0,
     };
   } catch { return null; }
 }
@@ -68,8 +71,10 @@ function getPerformanceSummary(s: GameStats): string {
     ? (s.totalCoachScore ?? 0) / (s.totalCoachScoreGames ?? 1) : null;
   const avgDice  = (s.totalDiceEfficiencyGames ?? 0) > 0
     ? (s.totalDiceEfficiency ?? 0) / (s.totalDiceEfficiencyGames ?? 1) : null;
-  const total   = s.winsVsBot + s.lossesVsBot;
-  const winRate = total > 0 ? (s.winsVsBot / total) * 100 : null;
+  const totalWins   = (s.winsVsBot ?? 0) + (s.winsMultiplayer ?? 0);
+  const totalLosses = (s.lossesVsBot ?? 0) + (s.lossesMultiplayer ?? 0);
+  const total   = totalWins + totalLosses;
+  const winRate = total > 0 ? (totalWins / total) * 100 : null;
 
   if (avgCoach !== null && avgCoach >= 80) {
     return "Strong tactical consistency. Your coach score is trending high — keep building protected points and limiting blots.";
@@ -295,9 +300,11 @@ export default function StatsPage() {
   }
 
   // ── Derived stats ────────────────────────────────────────────────────────────
-  const total       = stats.winsVsBot + stats.lossesVsBot;
-  const winRate     = total > 0 ? Math.round((stats.winsVsBot / total) * 100) : 0;
-  const avgDurSec   = stats.gamesPlayed > 0 ? stats.totalDurationMs / stats.gamesPlayed / 1000 : 0;
+  const totalWins    = (stats.winsVsBot ?? 0)  + (stats.winsMultiplayer  ?? 0);
+  const totalLosses  = (stats.lossesVsBot ?? 0) + (stats.lossesMultiplayer ?? 0);
+  const total        = totalWins + totalLosses;
+  const winRate      = total > 0 ? Math.round((totalWins / total) * 100) : 0;
+  const avgDurSec    = stats.gamesPlayed > 0 ? stats.totalDurationMs / stats.gamesPlayed / 1000 : 0;
 
   const avgCoachScore  = (stats.totalCoachScoreGames  ?? 0) > 0
     ? Math.round((stats.totalCoachScore  ?? 0) / (stats.totalCoachScoreGames  ?? 1)) : null;
@@ -306,17 +313,22 @@ export default function StatsPage() {
   const avgBlotsLeft   = (stats.totalCoachScoreGames  ?? 0) > 0
     ? ((stats.totalBlotsLeft  ?? 0) / (stats.totalCoachScoreGames  ?? 1)).toFixed(1) : null;
 
+  const mpWins   = stats.winsMultiplayer  ?? 0;
+  const mpLosses = stats.lossesMultiplayer ?? 0;
+  const mpTotal  = mpWins + mpLosses;
+  const mpWinRate = mpTotal > 0 ? Math.round((mpWins / mpTotal) * 100) : 0;
+
   const recentGames = [...(stats.recentGames ?? [])].reverse().slice(0, 5);
 
   const kpiCards = [
-    { label: "Games Played",       value: String(stats.gamesPlayed),      sub: "all modes"              },
-    { label: "Win Rate",           value: `${winRate}%`,                  sub: `${stats.winsVsBot}W / ${stats.lossesVsBot}L vs bot`, accent: true },
-    { label: "Current Streak",     value: String(stats.currentStreak),    sub: "consecutive wins"        },
-    { label: "Longest Streak",     value: String(stats.longestStreak),    sub: "best run"                },
+    { label: "Games Played",       value: String(stats.gamesPlayed),   sub: "all modes"              },
+    { label: "Win Rate",           value: `${winRate}%`,               sub: `${totalWins}W / ${totalLosses}L total`, accent: true },
+    { label: "Current Streak",     value: String(stats.currentStreak), sub: "consecutive wins"        },
+    { label: "Longest Streak",     value: String(stats.longestStreak), sub: "best run"                },
     { label: "Avg Coach Score",    value: avgCoachScore !== null ? String(avgCoachScore) : "—", sub: "0–100 scale", accent: true },
     { label: "Best Coach Score",   value: (stats.bestCoachScore ?? 0) > 0 ? String(stats.bestCoachScore) : "—", sub: "personal best" },
-    { label: "Avg Dice Efficiency",value: avgDiceEff !== null ? `${avgDiceEff}%` : "—", sub: "higher is better"    },
-    { label: "Favorite Difficulty",value: favDifficulty(stats.difficultyStats), sub: "most games played"   },
+    { label: "Avg Dice Efficiency",value: avgDiceEff !== null ? `${avgDiceEff}%` : "—", sub: "higher is better" },
+    { label: "Favorite Difficulty",value: favDifficulty(stats.difficultyStats), sub: "most bot games"   },
   ];
 
   return (
@@ -341,16 +353,20 @@ export default function StatsPage() {
         <Link href="/" className="font-sans text-sm font-semibold transition-colors duration-150" style={{ color: "var(--text-muted)" }}>
           Nardy Blitz
         </Link>
-        <Link
-          href="/play"
-          className="inline-flex items-center gap-1.5 font-mono text-[11px] tracking-wide px-4 py-1.5 rounded-xl transition-all duration-150"
-          style={{ background: "rgba(217,119,6,0.08)", border: "1px solid rgba(217,119,6,0.15)", color: "var(--gold-bright)" }}
-        >
-          Play now
-          <svg width="10" height="10" viewBox="0 0 10 10" fill="none" aria-hidden>
-            <path d="M2 5h6M5 2l3 3-3 3" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
-          </svg>
-        </Link>
+        <div className="flex items-center gap-3">
+          <Link href="/history" className="font-mono text-[11px] tracking-wider transition-colors duration-150" style={{ color: "#475569" }}>History</Link>
+          <Link href="/tournament" className="font-mono text-[11px] tracking-wider transition-colors duration-150" style={{ color: "#475569" }}>Tournament</Link>
+          <Link
+            href="/play"
+            className="inline-flex items-center gap-1.5 font-mono text-[11px] tracking-wide px-4 py-1.5 rounded-xl transition-all duration-150"
+            style={{ background: "rgba(217,119,6,0.08)", border: "1px solid rgba(217,119,6,0.15)", color: "var(--gold-bright)" }}
+          >
+            Play now
+            <svg width="10" height="10" viewBox="0 0 10 10" fill="none" aria-hidden>
+              <path d="M2 5h6M5 2l3 3-3 3" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          </Link>
+        </div>
       </nav>
 
       <main className="relative z-10 flex-1 max-w-6xl mx-auto w-full px-4 sm:px-8 py-10 space-y-12">
@@ -383,6 +399,40 @@ export default function StatsPage() {
             ))}
           </motion.div>
         </section>
+
+        {/* Multiplayer stats — only shown when at least one multiplayer game was played */}
+        {mpTotal > 0 && (
+          <motion.section
+            initial={{ opacity: 0, y: 10 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true, margin: "-20px" }}
+            transition={{ duration: 0.35, ease: EXPO }}
+            aria-label="Multiplayer stats"
+          >
+            <SectionLabel>Multiplayer</SectionLabel>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              {[
+                { label: "MP Games",    value: String(mpTotal)          },
+                { label: "MP Wins",     value: String(mpWins)           },
+                { label: "MP Losses",   value: String(mpLosses)         },
+                { label: "MP Win Rate", value: `${mpWinRate}%`          },
+              ].map(({ label, value }) => (
+                <div
+                  key={label}
+                  className="rounded-xl px-4 py-3"
+                  style={{ background: "rgba(16,185,129,0.04)", border: "1px solid rgba(16,185,129,0.1)" }}
+                >
+                  <span className="block font-mono font-semibold tabular-nums text-lg" style={{ color: "#10B981" }}>
+                    {value}
+                  </span>
+                  <span className="font-mono text-[9px] uppercase tracking-widest" style={{ color: "var(--text-dim)" }}>
+                    {label}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </motion.section>
+        )}
 
         {/* Performance Summary */}
         <motion.section
@@ -499,7 +549,7 @@ export default function StatsPage() {
                     className="font-mono text-[10px] w-16 text-center px-2 py-0.5 rounded"
                     style={{ background: "rgba(255,255,255,0.04)", color: "var(--text-muted)" }}
                   >
-                    {g.mode === "vs-bot" ? "Bot" : "Local"}
+                    {g.mode === "vs-bot" ? "Bot" : g.mode === "multiplayer" ? "Multi" : "Local"}
                   </span>
 
                   {/* Human color */}
@@ -572,6 +622,9 @@ export default function StatsPage() {
           </motion.div>
         )}
 
+        {/* Badges */}
+        <BadgesSection stats={stats} winRate={winRate} avgCoachScore={avgCoachScore} />
+
         {/* Submit to Leaderboard */}
         <LeaderboardSubmitSection stats={stats} winRate={winRate} avgCoachScore={avgCoachScore} />
 
@@ -602,6 +655,82 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
   );
 }
 
+function BadgesSection({
+  stats, winRate, avgCoachScore,
+}: {
+  stats: GameStats;
+  winRate: number;
+  avgCoachScore: number | null;
+}) {
+  const totalWins = (stats.winsVsBot ?? 0) + (stats.winsMultiplayer ?? 0);
+  const mpWins    = stats.winsMultiplayer ?? 0;
+  const score = Math.round(
+    (avgCoachScore ?? 0) * 10 +
+    totalWins * 25 +
+    (stats.bestCoachScore ?? 0) * 5 +
+    winRate * 2 +
+    mpWins * 15
+  );
+  const avgDice = (stats.totalDiceEfficiencyGames ?? 0) > 0
+    ? (stats.totalDiceEfficiency ?? 0) / (stats.totalDiceEfficiencyGames ?? 1)
+    : 0;
+
+  const earned = calculateBadges({
+    gamesPlayed:       stats.gamesPlayed,
+    city:              "Unknown",
+    score,
+    bestCoachScore:    stats.bestCoachScore ?? 0,
+    avgDiceEfficiency: avgDice,
+    longestStreak:     stats.longestStreak,
+  });
+
+  return (
+    <motion.section
+      initial={{ opacity: 0, y: 10 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true, margin: "-20px" }}
+      transition={{ duration: 0.35, ease: [0.23, 1, 0.32, 1] }}
+      aria-label="Your badges"
+    >
+      <SectionLabel>Your Badges</SectionLabel>
+      {earned.length === 0 ? (
+        <div
+          className="rounded-2xl px-5 py-4 text-sm"
+          style={{ background: "rgba(11,17,32,0.85)", border: "1px solid rgba(255,255,255,0.07)", color: "var(--text-muted)", fontWeight: 300 }}
+        >
+          Play more games to unlock badges.
+        </div>
+      ) : (
+        <div className="flex flex-wrap gap-2">
+          {BADGE_DEFS.map((def) => {
+            const meta = getBadgeMeta(def.id);
+            if (!meta) return null;
+            const has = earned.includes(def.id);
+            return (
+              <span
+                key={def.id}
+                title={def.description}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-mono text-[10px] tracking-wide transition-opacity"
+                style={{
+                  background: has ? meta.bg : "rgba(14,22,39,0.5)",
+                  border: `1px solid ${has ? meta.border : "rgba(255,255,255,0.06)"}`,
+                  color: has ? meta.color : "rgba(148,163,184,0.3)",
+                  opacity: has ? 1 : 0.5,
+                }}
+              >
+                {has && (
+                  <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: meta.color }} />
+                )}
+                {meta.label}
+              </span>
+            );
+          })}
+        </div>
+      )}
+    </motion.section>
+  );
+}
+
 function LeaderboardSubmitSection({
   stats,
   winRate,
@@ -611,11 +740,15 @@ function LeaderboardSubmitSection({
   winRate: number;
   avgCoachScore: number | null;
 }) {
+  const totalWins   = (stats.winsVsBot ?? 0)   + (stats.winsMultiplayer  ?? 0);
+  const totalLosses = (stats.lossesVsBot ?? 0)  + (stats.lossesMultiplayer ?? 0);
+  const mpWins      = stats.winsMultiplayer ?? 0;
   const score = Math.round(
     (avgCoachScore ?? 0) * 10 +
-    stats.winsVsBot * 25 +
+    totalWins * 25 +
     (stats.bestCoachScore ?? 0) * 5 +
-    winRate * 2
+    winRate * 2 +
+    mpWins * 15
   );
 
   const [open, setOpen] = useState(false);
@@ -636,17 +769,30 @@ function LeaderboardSubmitSection({
 
     try {
       if (isSupabaseConfigured && supabase) {
-        const { error } = await supabase.from("leaderboard_entries").insert({
-          player_name: name.trim(),
-          city: city.trim() || "Unknown",
+        const avgDice = (stats.totalDiceEfficiencyGames ?? 0) > 0
+          ? (stats.totalDiceEfficiency ?? 0) / (stats.totalDiceEfficiencyGames ?? 1)
+          : 0;
+        const badges = calculateBadges({
+          gamesPlayed:       stats.gamesPlayed,
+          city:              city.trim() || "Unknown",
           score,
-          wins: stats.winsVsBot,
-          losses: stats.lossesVsBot,
-          games_played: stats.gamesPlayed,
-          best_coach_score: stats.bestCoachScore ?? 0,
+          bestCoachScore:    stats.bestCoachScore ?? 0,
+          avgDiceEfficiency: avgDice,
+          longestStreak:     stats.longestStreak,
+        });
+
+        const { error } = await supabase.from("leaderboard_entries").insert({
+          player_name:         name.trim(),
+          city:                city.trim() || "Unknown",
+          score,
+          wins:                totalWins,
+          losses:              totalLosses,
+          games_played:        stats.gamesPlayed,
+          best_coach_score:    stats.bestCoachScore ?? 0,
           average_coach_score: avgCoachScore ?? 0,
-          win_rate: winRate,
+          win_rate:            winRate,
           favorite_difficulty: favDiff,
+          badges,
         });
         if (error) throw error;
       }
@@ -683,7 +829,7 @@ function LeaderboardSubmitSection({
             </span>
           </div>
           <p className="text-[11px] leading-relaxed" style={{ color: "var(--text-muted)", fontWeight: 300 }}>
-            Your leaderboard score · {stats.winsVsBot}W × 25 + coach avg × 10 + best × 5 + win-rate × 2
+            Total wins × 25 + MP bonus × 15 + coach avg × 10 + best × 5 + win-rate × 2
           </p>
         </div>
 
