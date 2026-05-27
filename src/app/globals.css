@@ -1,0 +1,137 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── Design tokens (UI/UX Pro Max: Card & Board Game + Modern Dark Cinema) ── */
+:root {
+  /* Backgrounds — deep navy, not flat black */
+  --bg-base:    #080D17;
+  --bg-surface: #0E1627;
+  --bg-raised:  #152035;
+  --bg-card:    #192134;
+
+  /* Board — felt green family */
+  --felt-deep:    #071510;
+  --felt-base:    #0A1F14;
+  --felt-mid:     #0D2A1A;
+  --felt-point-a: #1A3A28;   /* green point */
+  --felt-point-b: #2A1A10;   /* mahogany point */
+
+  /* Accent — amber gold (game UI) */
+  --gold:         #D97706;
+  --gold-bright:  #F59E0B;
+  --gold-muted:   #92400E;
+  --gold-glow:    rgba(217, 119, 6, 0.18);
+
+  /* Emerald — landing page accent */
+  --emerald:        #059669;
+  --emerald-bright: #10B981;
+  --emerald-muted:  rgba(5, 150, 105, 0.10);
+  --emerald-border: rgba(16, 185, 129, 0.18);
+
+  /* Green primary (felt) */
+  --green:        #15803D;
+  --green-dim:    #166534;
+
+  /* Borders */
+  --border:       rgba(255, 255, 255, 0.07);
+  --border-gold:  rgba(217, 119, 6, 0.15);
+  --border-green: rgba(21, 128, 61, 0.25);
+
+  /* Text */
+  --text-primary: #F1F5F9;
+  --text-muted:   #64748B;
+  --text-dim:     #556578;
+
+  /* Easing — expo out from Modern Dark Cinema spec */
+  --ease-expo:    cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-out:     cubic-bezier(0.33, 1, 0.68, 1);
+  --ease-in-out:  cubic-bezier(0.645, 0.045, 0.355, 1);
+
+  /* Radius */
+  --radius-card: 16px;
+  --radius-sm:   8px;
+}
+
+* { box-sizing: border-box; }
+
+html {
+  background-color: var(--bg-base);
+  color: var(--text-primary);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  min-height: 100dvh;
+  /* Cinematic gradient from Modern Dark Cinema spec */
+  background:
+    radial-gradient(ellipse 70% 40% at 20% 10%, rgba(5,150,105,0.06) 0%, transparent 60%),
+    radial-gradient(ellipse 50% 30% at 80% 80%, rgba(5,150,105,0.03) 0%, transparent 55%),
+    linear-gradient(160deg, #0A0F1E 0%, #080D17 50%, #060A12 100%);
+}
+
+/* ── Ambient blob animation (Modern Dark Cinema style) ── */
+@keyframes blob-float {
+  0%, 100% { transform: translate(0px, 0px) scale(1); }
+  33%       { transform: translate(20px, -15px) scale(1.05); }
+  66%       { transform: translate(-10px, 10px) scale(0.97); }
+}
+
+.blob {
+  border-radius: 9999px;
+  filter: blur(60px);
+  animation: blob-float 12s ease-in-out infinite;
+  pointer-events: none;
+}
+.blob-2 { animation-delay: -4s; animation-duration: 15s; }
+.blob-3 { animation-delay: -8s; animation-duration: 10s; }
+
+/* ── Scrollbar ── */
+.scrollbar-thin {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(21,128,61,0.3) transparent;
+}
+.scrollbar-thin::-webkit-scrollbar { width: 3px; }
+.scrollbar-thin::-webkit-scrollbar-track { background: transparent; }
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background: rgba(21,128,61,0.3);
+  border-radius: 2px;
+}
+
+/* ── Focus ── */
+:focus-visible {
+  outline: 2px solid var(--gold);
+  outline-offset: 2px;
+}
+
+button { font: inherit; }
+
+/* ── Gold glow utility ── */
+.glow-gold {
+  box-shadow: 0 0 20px var(--gold-glow), 0 0 40px rgba(217,119,6,0.08);
+}
+.glow-green {
+  box-shadow: 0 0 20px rgba(21,128,61,0.2), 0 0 40px rgba(21,128,61,0.08);
+}
+
+/* ── Glass card (glassmorphism from Modern Dark Cinema) ── */
+.glass {
+  background: rgba(21, 33, 52, 0.7);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--border);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+  .blob { animation: none; }
+}
+
+@layer utilities {
+  .text-balance { text-wrap: balance; }
+}
